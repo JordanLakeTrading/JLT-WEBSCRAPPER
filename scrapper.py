@@ -2,8 +2,11 @@ import tkinter as tk
 from tkinter import filedialog, simpledialog, messagebox, scrolledtext, Canvas
 import pandas as pd
 import requests
+import re
 from bs4 import BeautifulSoup
 import threading
+from nltk.corpus import wordnet as wn
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 class StockScraperApp:
     def __init__(self, root):
@@ -34,13 +37,11 @@ class StockScraperApp:
         commands = [("Load URL", self.load_from_url), ("Select File", self.load_from_file),
                     ("Batch Process URLs", self.process_url_list), ("Find and Replace", self.find_replace),
                     ("Highlight Text", self.highlight_text), ("Unhighlight Text", self.unhighlight_text),
-                    ("Select HTML Elements", self.select_html_elements), ("Auto-Detect Tables", self.auto_detect_tables)]
+                    ("Select HTML Elements", self.select_html_elements), ("Auto-Detect Tables", self.auto_detect_tables),
+                    ("Sentiment Analysis", self.perform_sentiment_analysis_button_click), ("Display Words", self.display_words)]
         for (text, command) in commands:
             tk.Button(self.left_frame, text=text, command=command, bg='navy', fg='white').pack(fill=tk.X, padx=5, pady=5)
 
-        # Pagination buttons
-        tk.Button(self.right_frame, text="Back", command=self.show_previous_chunk).pack(side=tk.LEFT, padx=10, pady=5)
-        tk.Button(self.right_frame, text="Next", command=self.show_next_chunk).pack(side=tk.RIGHT, padx=10, pady=5)
 
     def setup_text_display(self):
         self.text = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, bg='white', fg='black')
@@ -63,9 +64,10 @@ class StockScraperApp:
     def fetch_and_display_url(self, url):
         try:
             response = requests.get(url)
-            self.text_content = response.text  # Store the entire text
-            self.current_position = 0  # Reset position
-            self.update_text_display()  # Display the first chunk
+            self.text_content = response.text  
+            self.current_position = 0  
+            self.update_text_display()  
+            self.perform_sentiment_analysis()  
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to load URL: {e}")
 
@@ -73,14 +75,14 @@ class StockScraperApp:
         try:
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path)
-                self.text_content = df.to_string()  # Convert DataFrame to string and store
-                self.current_position = 0  # Reset position
-                self.update_text_display()  # Display the first chunk
+                self.text_content = df.to_string()  
+                self.current_position = 0  
+                self.update_text_display()  
             else:
                 with open(file_path, 'r') as file:
-                    self.text_content = file.read()  # Read and store entire file
-                    self.current_position = 0  # Reset position
-                    self.update_text_display()  # Display the first chunk
+                    self.text_content = file.read()  
+                    self.current_position = 0  
+                    self.update_text_display()  
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file: {e}")
 
@@ -139,7 +141,7 @@ class StockScraperApp:
         selected_text = '\n'.join(str(element) for element in elements)
         self.text.delete(1.0, tk.END)
         self.text.insert(tk.END, selected_text)
-
+    
     def show_next_chunk(self):
         if self.current_position + self.chunk_size < len(self.text_content):
             self.current_position += self.chunk_size
@@ -157,6 +159,77 @@ class StockScraperApp:
         end_pos = min(self.current_position + self.chunk_size, len(self.text_content))
         display_text = self.text_content[self.current_position:end_pos]
         self.text.insert(tk.END, display_text)
+
+    def perform_sentiment_analysis(self):
+        if not self.text_content:
+            messagebox.showerror("Error", "No content loaded. Please load a URL or file first.")
+            return
+
+        positive_words = []
+        negative_words = []
+
+        for word in self.word_list:
+            synsets = wn.synsets(word)
+            if any(syn.pos() == 'a' for syn in synsets):
+                if self.is_positive_adjective(word):
+                    positive_words.append(word)
+                else:
+                    negative_words.append(word)
+
+        positive_df = pd.DataFrame(positive_words, columns=['Word'])
+        negative_df = pd.DataFrame(negative_words, columns=['Word'])
+
+        positive_df['Frequency'] = positive_df['Word'].map(positive_df['Word'].value_counts())
+        negative_df['Frequency'] = negative_df['Word'].map(negative_df['Word'].value_counts())
+
+        positive_output = "Positive Words:\n" + positive_df.to_string(index=False)
+        negative_output = "\nNegative Words:\n" + negative_df.to_string(index=False)
+
+        # Create a new window
+        sentiment_window = tk.Toplevel()
+        sentiment_window.title("Sentiment Analysis Results")
+        
+        # Create text widget to display results
+        results_text = tk.Text(sentiment_window)
+        results_text.insert(tk.END, positive_output + "\n" + negative_output)
+        results_text.pack()
+
+        sentiment_window.mainloop()
+
+    def perform_sentiment_analysis_button_click(self):
+        self.perform_sentiment_analysis()
+    
+    def is_positive_adjective(self, word):
+        synsets = wn.synsets(word, pos=wn.ADJ)
+        for synset in synsets:
+            if synset.positive_score() > synset.negative_score():
+                return True
+        return False
+    
+    def display_words(self):
+        try:
+            if self.text_content:
+                # Get the webpage text content
+                soup = BeautifulSoup(self.text_content, 'html.parser')
+                webpage_text = soup.get_text()
+
+                # Split the text into words
+                self.word_list = re.findall(r'\w+', webpage_text)
+
+                # Create a new window to display the words
+                display_window = tk.Toplevel(self.root)
+                display_window.title("Words from URL")
+                text_box = scrolledtext.ScrolledText(display_window, wrap=tk.WORD)
+
+                # Insert the words into the text box
+                word_list_str = '\n'.join(self.word_list)
+                text_box.insert(tk.END, word_list_str)
+                text_box.pack(fill=tk.BOTH, expand=True)
+            else:
+                messagebox.showerror("Error", "No content loaded. Please load a URL first.")
+        except Exception as e:
+            messagebox.showerror("Error", f"An error occurred: {e}")
+        
 root = tk.Tk()
 app = StockScraperApp(root)
 root.mainloop()
