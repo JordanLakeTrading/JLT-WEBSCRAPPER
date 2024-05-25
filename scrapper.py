@@ -22,13 +22,13 @@ class StockScraperApp:
         self.setup_icon()
 
     def setup_frames(self):
-        self.left_frame = tk.Frame(self.root, width=200, relief=tk.RAISED, borderwidth=2, bg='lightgray')
+        self.left_frame = tk.Frame(self.root, width=200, relief=tk.RAISED, borderwidth=2, bg='white')
         self.left_frame.pack(side=tk.LEFT, fill=tk.Y)
         self.right_frame = tk.Frame(self.root, bg='white')
         self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
 
     def setup_buttons(self):
-        tk.Label(self.left_frame, text="Enter URL or Select File:", bg='lightgray').pack(fill=tk.X, padx=5)
+        tk.Label(self.left_frame, text="Enter URL or Select File:", bg='white').pack(fill=tk.X, padx=5)
         self.url_entry = tk.Entry(self.left_frame, width=20)
         self.url_entry.pack(fill=tk.X, padx=5)
         self.add_buttons()
@@ -38,19 +38,18 @@ class StockScraperApp:
                     ("Batch Process URLs", self.process_url_list), ("Find and Replace", self.find_replace),
                     ("Highlight Text", self.highlight_text), ("Unhighlight Text", self.unhighlight_text),
                     ("Select HTML Elements", self.select_html_elements), ("Auto-Detect Tables", self.auto_detect_tables),
-                    ("Sentiment Analysis", self.perform_sentiment_analysis_button_click), ("Display Words", self.display_words)]
+                    ("Sentiment Analysis", self.perform_sentiment_analysis), ("Display Words", self.display_words)]
         for (text, command) in commands:
-            tk.Button(self.left_frame, text=text, command=command, bg='navy', fg='white').pack(fill=tk.X, padx=5, pady=5)
+            tk.Button(self.left_frame, text=text, command=command, bg='red', fg='white').pack(fill=tk.X, padx=5, pady=5)
 
 
     def setup_text_display(self):
-        self.text = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, bg='white', fg='black')
+        self.text = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, bg='black', fg='white')
         self.text.pack(fill=tk.BOTH, expand=True)
 
     def setup_icon(self):
-        canvas = Canvas(self.left_frame, width=20, height=20, bg='lightgray', highlightthickness=0)
+        canvas = Canvas(self.left_frame, width=20, height=20, bg='white', highlightthickness=0)
         canvas.pack(side=tk.BOTTOM, pady=10, expand=True)
-        canvas.create_rectangle(5, 5, 15, 15, fill='darkblue')
 
     def load_from_url(self):
         url = self.url_entry.get()
@@ -196,8 +195,7 @@ class StockScraperApp:
 
         sentiment_window.mainloop()
 
-    def perform_sentiment_analysis_button_click(self):
-        self.perform_sentiment_analysis()
+    
     
     def is_positive_adjective(self, word):
         synsets = wn.synsets(word, pos=wn.ADJ)
