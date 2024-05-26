@@ -1,12 +1,17 @@
 import tkinter as tk
-from tkinter import filedialog, simpledialog, messagebox, scrolledtext, Canvas
+from tkinter import filedialog, simpledialog, messagebox, scrolledtext, Canvas, ttk
 import pandas as pd
 import requests
 import re
 from bs4 import BeautifulSoup
 import threading
+import nltk
 from nltk.corpus import wordnet as wn
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from sklearn.feature_extraction.text import TfidfVectorizer
+
+nltk.download('wordnet')
+nltk.download('vader_lexicon')
 
 class StockScraperApp:
     def __init__(self, root):
@@ -15,6 +20,7 @@ class StockScraperApp:
         self.text_content = ""  # Variable to store all text
         self.chunk_size = 5000  # Display 5000 characters at a time
         self.current_position = 0  # Current starting index of text to display
+        self.history = []  # List to store history of URL loads and sentiment analysis
 
         self.setup_frames()
         self.setup_buttons()
@@ -37,11 +43,12 @@ class StockScraperApp:
         commands = [("Load URL", self.load_from_url), ("Select File", self.load_from_file),
                     ("Batch Process URLs", self.process_url_list), ("Find and Replace", self.find_replace),
                     ("Highlight Text", self.highlight_text), ("Unhighlight Text", self.unhighlight_text),
-                    ("Select HTML Elements", self.select_html_elements), ("Auto-Detect Tables", self.auto_detect_tables),
-                    ("Sentiment Analysis", self.perform_sentiment_analysis), ("Display Words", self.display_words)]
+                    ("Select HTML Elements", self.select_html_elements),
+                    ("Auto-Detect Tables", self.auto_detect_tables),
+                    ("Sentiment Analysis", self.perform_sentiment_analysis), ("Display Words", self.display_words),
+                    ("Show History", self.show_history)]
         for (text, command) in commands:
             tk.Button(self.left_frame, text=text, command=command, bg='red', fg='white').pack(fill=tk.X, padx=5, pady=5)
-
 
     def setup_text_display(self):
         self.text = scrolledtext.ScrolledText(self.right_frame, wrap=tk.WORD, bg='black', fg='white')
@@ -63,10 +70,10 @@ class StockScraperApp:
     def fetch_and_display_url(self, url):
         try:
             response = requests.get(url)
-            self.text_content = response.text  
-            self.current_position = 0  
-            self.update_text_display()  
-            self.perform_sentiment_analysis()  
+            self.text_content = response.text
+            self.current_position = 0
+            self.update_text_display()
+            self.perform_sentiment_analysis()
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to load URL: {e}")
 
@@ -74,106 +81,106 @@ class StockScraperApp:
         try:
             if file_path.endswith('.csv'):
                 df = pd.read_csv(file_path)
-                self.text_content = df.to_string()  
-                self.current_position = 0  
-                self.update_text_display()  
+                self.text_content = df.to_string()
             else:
-                with open(file_path, 'r') as file:
-                    self.text_content = file.read()  
-                    self.current_position = 0  
-                    self.update_text_display()  
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load file: {e}")
-
-    def process_url_list(self):
-        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
-        if file_path:
-            urls = pd.read_csv(file_path)
-            for url in urls.itertuples():
-                self.text.insert(tk.END, f"\nProcessing {url[1]}\n")
-                threading.Thread(target=self.fetch_and_display_url, args=(url[1],)).start()
-
-    def auto_detect_tables_from_content(self, content):
-        soup = BeautifulSoup(content, 'html.parser')
-        tables = soup.find_all('table')
-        for idx, table in enumerate(tables):
-            df = pd.read_html(str(table))[0]
-            file_path = filedialog.asksaveasfilename(defaultextension=".csv",
-                                                     filetypes=[("CSV files", "*.csv")],
-                                                     initialfile=f"table_{idx}.csv")
-            if file_path:
-                df.to_csv(file_path, index=False)
-                messagebox.showinfo("Success", f"Table {idx} saved as {file_path}")
-
-    def auto_detect_tables(self):
-        content = self.text.get(1.0, tk.END)
-        self.auto_detect_tables_from_content(content)
-
-    def find_replace(self):
-        find_str = simpledialog.askstring("Find", "Enter text to find:")
-        replace_str = simpledialog.askstring("Replace", "Enter text to replace:")
-        content = self.text.get(1.0, tk.END)
-        new_content = content.replace(find_str, replace_str)
-        self.text.delete(1.0, tk.END)
-        self.text.insert(tk.END, new_content)
-
-    def highlight_text(self):
-        target = simpledialog.askstring("Highlight", "Enter text to highlight:")
-        start = 1.0
-        while True:
-            start = self.text.search(target, start, stopindex=tk.END)
-            if not start:
-                break
-            end = f"{start}+{len(target)}c"
-            self.text.tag_add('highlight', start, end)
-            self.text.tag_configure('highlight', background='yellow')
-            start = end
-
-    def unhighlight_text(self):
-        self.text.tag_remove('highlight', "1.0", tk.END)
-
-    def select_html_elements(self):
-        tag = simpledialog.askstring("Select HTML Elements", "Enter HTML tag to select (e.g., table):")
-        content = self.text.get(1.0, tk.END)
-        soup = BeautifulSoup(content, 'html.parser')
-        elements = soup.find_all(tag)
-        selected_text = '\n'.join(str(element) for element in elements)
-        self.text.delete(1.0, tk.END)
-        self.text.insert(tk.END, selected_text)
-    
-    def show_next_chunk(self):
-        if self.current_position + self.chunk_size < len(self.text_content):
-            self.current_position += self.chunk_size
-            self.update_text_display()
-
-    def show_previous_chunk(self):
-        if self.current_position - self.chunk_size >= 0:
-            self.current_position -= self.chunk_size
-        else:
+                with open(file_path, 'r', encoding='utf-8') as file:
+                    self.text_content = file.read()
             self.current_position = 0
-        self.update_text_display()
+            self.update_text_display()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to read file: {e}")
 
     def update_text_display(self):
-        self.text.delete(1.0, tk.END)
-        end_pos = min(self.current_position + self.chunk_size, len(self.text_content))
-        display_text = self.text_content[self.current_position:end_pos]
-        self.text.insert(tk.END, display_text)
+        if self.text_content:
+            self.text.config(state=tk.NORMAL)
+            self.text.delete(1.0, tk.END)
+            self.text.insert(tk.END, self.text_content[self.current_position:self.current_position + self.chunk_size])
+            self.text.config(state=tk.DISABLED)
+        else:
+            messagebox.showerror("Error", "No content to display.")
+
+    def find_replace(self):
+        word_to_find = simpledialog.askstring("Find and Replace", "Enter word to find:")
+        word_to_replace = simpledialog.askstring("Find and Replace", "Enter word to replace with:")
+
+        if word_to_find and word_to_replace:
+            self.text_content = self.text_content.replace(word_to_find, word_to_replace)
+            self.update_text_display()
+
+    def highlight_text(self):
+        word_to_highlight = simpledialog.askstring("Highlight Text", "Enter word to highlight:")
+        if word_to_highlight:
+            self.text.tag_remove("highlight", "1.0", tk.END)
+            start_pos = "1.0"
+            while True:
+                start_pos = self.text.search(word_to_highlight, start_pos, tk.END)
+                if not start_pos:
+                    break
+                end_pos = f"{start_pos}+{len(word_to_highlight)}c"
+                self.text.tag_add("highlight", start_pos, end_pos)
+                start_pos = end_pos
+            self.text.tag_config("highlight", background="yellow")
+
+    def unhighlight_text(self):
+        self.text.tag_remove("highlight", "1.0", tk.END)
+
+    def select_html_elements(self):
+        element = simpledialog.askstring("Select HTML Elements", "Enter HTML element (e.g., 'p' for paragraphs):")
+        if element:
+            try:
+                soup = BeautifulSoup(self.text_content, 'html.parser')
+                elements = soup.find_all(element)
+                element_text = "\n\n".join([el.get_text() for el in elements])
+                self.text_content = element_text
+                self.update_text_display()
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to select HTML elements: {e}")
+
+    def auto_detect_tables(self):
+        try:
+            soup = BeautifulSoup(self.text_content, 'html.parser')
+            tables = soup.find_all('table')
+            tables_text = "\n\n".join([str(table) for table in tables])
+            self.text_content = tables_text
+            self.update_text_display()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to auto-detect tables: {e}")
+
+    def process_url_list(self):
+        url_file = filedialog.askopenfilename(filetypes=[("Text files", "*.txt"), ("CSV files", "*.csv")])
+        if url_file:
+            try:
+                urls = []
+                if url_file.endswith('.csv'):
+                    df = pd.read_csv(url_file)
+                    urls = df.iloc[:, 0].tolist()
+                else:
+                    with open(url_file, 'r') as file:
+                        urls = file.readlines()
+
+                for url in urls:
+                    self.fetch_and_display_url(url.strip())
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to process URL list: {e}")
 
     def perform_sentiment_analysis(self):
         if not self.text_content:
             messagebox.showerror("Error", "No content loaded. Please load a URL or file first.")
             return
 
+        if not hasattr(self, 'word_list') or not self.word_list:
+            self.display_words()
+
+        sid = SentimentIntensityAnalyzer()
         positive_words = []
         negative_words = []
 
         for word in self.word_list:
-            synsets = wn.synsets(word)
-            if any(syn.pos() == 'a' for syn in synsets):
-                if self.is_positive_adjective(word):
-                    positive_words.append(word)
-                else:
-                    negative_words.append(word)
+            sentiment = sid.polarity_scores(word)
+            if sentiment['compound'] >= 0.05:
+                positive_words.append(word)
+            elif sentiment['compound'] <= -0.05:
+                negative_words.append(word)
 
         positive_df = pd.DataFrame(positive_words, columns=['Word'])
         negative_df = pd.DataFrame(negative_words, columns=['Word'])
@@ -184,10 +191,27 @@ class StockScraperApp:
         positive_output = "Positive Words:\n" + positive_df.to_string(index=False)
         negative_output = "\nNegative Words:\n" + negative_df.to_string(index=False)
 
+        # Determine overall sentiment
+        if len(positive_words) > len(negative_words):
+            overall_sentiment = "Good"
+        elif len(positive_words) < len(negative_words):
+            overall_sentiment = "Bad"
+        else:
+            overall_sentiment = "Moderate"
+
+        # Store results in history
+        self.history.append({
+            'url': self.url_entry.get(),
+            'word_list': self.word_list,
+            'positive_words': positive_words,
+            'negative_words': negative_words,
+            'overall_sentiment': overall_sentiment
+        })
+
         # Create a new window
         sentiment_window = tk.Toplevel()
         sentiment_window.title("Sentiment Analysis Results")
-        
+
         # Create text widget to display results
         results_text = tk.Text(sentiment_window)
         results_text.insert(tk.END, positive_output + "\n" + negative_output)
@@ -195,15 +219,6 @@ class StockScraperApp:
 
         sentiment_window.mainloop()
 
-    
-    
-    def is_positive_adjective(self, word):
-        synsets = wn.synsets(word, pos=wn.ADJ)
-        for synset in synsets:
-            if synset.positive_score() > synset.negative_score():
-                return True
-        return False
-    
     def display_words(self):
         try:
             if self.text_content:
@@ -227,7 +242,46 @@ class StockScraperApp:
                 messagebox.showerror("Error", "No content loaded. Please load a URL first.")
         except Exception as e:
             messagebox.showerror("Error", f"An error occurred: {e}")
-        
+
+    def show_history(self):
+        history_window = tk.Toplevel()
+        history_window.title("History of Loaded URLs and Sentiment Analysis")
+
+        columns = ("URL", "Words", "Positive Words", "Negative Words", "Overall Sentiment")
+        tree = ttk.Treeview(history_window, columns=columns, show="headings")
+        tree.heading("URL", text="URL")
+        tree.heading("Words", text="Words")
+        tree.heading("Positive Words", text="Positive Words")
+        tree.heading("Negative Words", text="Negative Words")
+        tree.heading("Overall Sentiment", text="Overall Sentiment")
+
+        for entry in self.history:
+            tree.insert("", tk.END, values=(
+                entry['url'],
+                ', '.join(entry['word_list']),
+                ', '.join(entry['positive_words']),
+                ', '.join(entry['negative_words']),
+                entry['overall_sentiment']
+            ))
+
+        tree.pack(fill=tk.BOTH, expand=True)
+
+        export_button = tk.Button(history_window, text="Export to CSV", command=self.export_history)
+        export_button.pack(pady=10)
+
+    def export_history(self):
+        if not self.history:
+            messagebox.showerror("Error", "No history to export.")
+            return
+
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv",
+                                                 filetypes=[("CSV files", "*.csv")],
+                                                 title="Save history as CSV")
+        if file_path:
+            history_df = pd.DataFrame(self.history)
+            history_df.to_csv(file_path, index=False)
+            messagebox.showinfo("Success", f"History exported to {file_path}")
+
 root = tk.Tk()
 app = StockScraperApp(root)
 root.mainloop()
