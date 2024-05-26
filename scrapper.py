@@ -7,13 +7,11 @@ from bs4 import BeautifulSoup
 import threading
 import nltk
 import time
-from nltk.corpus import wordnet as wn
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
 from googlesearch import search
+import matplotlib.pyplot as plt
 
-nltk.download('wordnet')
 nltk.download('vader_lexicon')
-
 
 class FinanceScraper:
     def __init__(self, company, nasdaq_code, seo_words, display_callback):
@@ -23,7 +21,7 @@ class FinanceScraper:
         self.display_callback = display_callback
         self.sentiment_analyzer = SentimentIntensityAnalyzer()
         self.history = []
-
+  
     def analyze_sentiment(self, text):
         return self.sentiment_analyzer.polarity_scores(text)
 
@@ -42,7 +40,7 @@ class FinanceScraper:
                 sentiment = self.analyze_sentiment(summary)
 
                 self.display_callback(self.company, url, summary, sentiment)
-                self.history.append({"Title": self.company, "URL": url, "Summary": summary, "Sentiment": sentiment})
+                self.history.append({"Title": self.company, "URL": url, "Summary": summary, **sentiment})
                 time.sleep(5)  # Display each result for 5 seconds
             except Exception as e:
                 print(f"Error processing {url}: {e}")
@@ -95,7 +93,7 @@ class StockScraperApp:
                     ("Auto-Detect Tables", self.auto_detect_tables),
                     ("Sentiment Analysis", self.perform_sentiment_analysis), ("Display Words", self.display_words),
                     ("Show History", self.show_history), ("Start Auto Search", self.start_auto_search),
-                    ("Stop Auto Search", self.stop_auto_search)]
+                    ("Stop Auto Search", self.stop_auto_search), ("Visualize Sentiment", self.visualize_sentiment)]
         for (text, command) in commands:
             tk.Button(self.left_frame, text=text, command=command, bg='red', fg='white').pack(fill=tk.X, padx=5, pady=5)
 
@@ -366,16 +364,44 @@ class StockScraperApp:
 
         tk.Button(auto_search_window, text="Start", command=start_search).pack(pady=10)
 
+    def visualize_sentiment(self):
+        #if self.scraper:
+            sentiment_window = tk.Toplevel()
+            sentiment_window.title("Visualize Sentiment")
+
+            import_button = tk.Button(sentiment_window, text="Import CSV", command=self.import_csv)
+            import_button.pack(pady=10)
+
+    def import_csv(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if file_path:
+            try:
+                df = pd.read_csv(file_path)
+                if 'pos' in df.columns and 'neg' in df.columns:
+                    plt.figure(figsize=(10, 6))
+                    plt.scatter(df['pos'], range(len(df)), color='green', label='Positive Sentiment')
+                    plt.scatter(df['neg'], range(len(df)), color='red', label='Negative Sentiment')
+                    plt.xlabel('Sentiment Score')
+                    plt.ylabel('Article Index')
+                    plt.title('Sentiment Analysis Results')
+                    plt.xticks([0, 0.5, 1], ['Neg', 'Neutral', 'Pos'])
+                    plt.legend()
+                    plt.grid(True)
+                    plt.show()
+                else:
+                    messagebox.showerror("Error", "CSV file does not contain required columns 'pos' and 'neg'.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to import CSV: {e}")
+    
     def display_article(self, title, link, summary, sentiment):
         sentiment_str = f"Pos: {sentiment['pos']} | Neu: {sentiment['neu']} | Neg: {sentiment['neg']} | Compound: {sentiment['compound']}"
         self.text.config(state=tk.NORMAL)
         self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\n\n")
         self.text.config(state=tk.DISABLED)
-        self.history.append({"Title": title, "URL": link, "Summary": summary, "Sentiment": sentiment_str})
+        self.history.append({"Title": title, "URL": link, "Summary": summary, **sentiment})
 
     def stop_auto_search(self):
         if self.scraper:
-            self.scraper.stop_scraping()
             self.scraper_thread.join()
             self.scraper = None
             messagebox.showinfo("Stopped", "Automatic search stopped.")
