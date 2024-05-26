@@ -6,12 +6,58 @@ import re
 from bs4 import BeautifulSoup
 import threading
 import nltk
+import time
 from nltk.corpus import wordnet as wn
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from sklearn.feature_extraction.text import TfidfVectorizer
+from googlesearch import search
 
 nltk.download('wordnet')
 nltk.download('vader_lexicon')
+
+
+class FinanceScraper:
+    def __init__(self, company, nasdaq_code, seo_words, display_callback):
+        self.company = company
+        self.nasdaq_code = nasdaq_code
+        self.seo_words = seo_words
+        self.display_callback = display_callback
+        self.sentiment_analyzer = SentimentIntensityAnalyzer()
+        self.history = []
+
+    def analyze_sentiment(self, text):
+        return self.sentiment_analyzer.polarity_scores(text)
+
+    def fetch_article_summary(self, url):
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.find_all('p')
+        summary = ' '.join([para.get_text() for para in paragraphs])
+        return summary
+
+    def scrape_google_search(self):
+        query = f"{self.company} {self.nasdaq_code} {' '.join(self.seo_words)} finance news"
+        for url in search(query, num_results=10):
+            try:
+                summary = self.fetch_article_summary(url)
+                sentiment = self.analyze_sentiment(summary)
+
+                self.display_callback(self.company, url, summary, sentiment)
+                self.history.append({"Title": self.company, "URL": url, "Summary": summary, "Sentiment": sentiment})
+                time.sleep(5)  # Display each result for 5 seconds
+            except Exception as e:
+                print(f"Error processing {url}: {e}")
+
+    def start_scraping(self, interval, duration):
+        end_time = time.time() + duration * 60
+        while time.time() < end_time:
+            self.scrape_google_search()
+            time.sleep(interval)
+
+    def export_history(self, file_path):
+        history_df = pd.DataFrame(self.history)
+        history_df.to_csv(file_path, index=False)
+        print(f"History exported to {file_path}")
+
 
 class StockScraperApp:
     def __init__(self, root):
@@ -21,6 +67,8 @@ class StockScraperApp:
         self.chunk_size = 5000  # Display 5000 characters at a time
         self.current_position = 0  # Current starting index of text to display
         self.history = []  # List to store history of URL loads and sentiment analysis
+        self.scraper_thread = None
+        self.scraper = None
 
         self.setup_frames()
         self.setup_buttons()
@@ -46,7 +94,8 @@ class StockScraperApp:
                     ("Select HTML Elements", self.select_html_elements),
                     ("Auto-Detect Tables", self.auto_detect_tables),
                     ("Sentiment Analysis", self.perform_sentiment_analysis), ("Display Words", self.display_words),
-                    ("Show History", self.show_history)]
+                    ("Show History", self.show_history), ("Start Auto Search", self.start_auto_search),
+                    ("Stop Auto Search", self.stop_auto_search)]
         for (text, command) in commands:
             tk.Button(self.left_frame, text=text, command=command, bg='red', fg='white').pack(fill=tk.X, padx=5, pady=5)
 
@@ -201,11 +250,10 @@ class StockScraperApp:
 
         # Store results in history
         self.history.append({
-            'url': self.url_entry.get(),
-            'word_list': self.word_list,
-            'positive_words': positive_words,
-            'negative_words': negative_words,
-            'overall_sentiment': overall_sentiment
+            'Title': self.url_entry.get(),
+            'URL': self.url_entry.get(),
+            'Summary': self.text_content[:200],  # Summary is the first 200 characters
+            'Sentiment': overall_sentiment
         })
 
         # Create a new window
@@ -247,21 +295,19 @@ class StockScraperApp:
         history_window = tk.Toplevel()
         history_window.title("History of Loaded URLs and Sentiment Analysis")
 
-        columns = ("URL", "Words", "Positive Words", "Negative Words", "Overall Sentiment")
+        columns = ("Title", "URL", "Summary", "Sentiment")
         tree = ttk.Treeview(history_window, columns=columns, show="headings")
+        tree.heading("Title", text="Title")
         tree.heading("URL", text="URL")
-        tree.heading("Words", text="Words")
-        tree.heading("Positive Words", text="Positive Words")
-        tree.heading("Negative Words", text="Negative Words")
-        tree.heading("Overall Sentiment", text="Overall Sentiment")
+        tree.heading("Summary", text="Summary")
+        tree.heading("Sentiment", text="Sentiment")
 
         for entry in self.history:
             tree.insert("", tk.END, values=(
-                entry['url'],
-                ', '.join(entry['word_list']),
-                ', '.join(entry['positive_words']),
-                ', '.join(entry['negative_words']),
-                entry['overall_sentiment']
+                entry['Title'],
+                entry['URL'],
+                entry['Summary'],
+                entry['Sentiment']
             ))
 
         tree.pack(fill=tk.BOTH, expand=True)
@@ -281,6 +327,59 @@ class StockScraperApp:
             history_df = pd.DataFrame(self.history)
             history_df.to_csv(file_path, index=False)
             messagebox.showinfo("Success", f"History exported to {file_path}")
+
+    def start_auto_search(self):
+        auto_search_window = tk.Toplevel(self.root)
+        auto_search_window.title("Start Automatic Search")
+
+        tk.Label(auto_search_window, text="Company Name:").pack(fill=tk.X, padx=5, pady=5)
+        company_name_entry = tk.Entry(auto_search_window)
+        company_name_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(auto_search_window, text="NASDAQ Code:").pack(fill=tk.X, padx=5, pady=5)
+        nasdaq_code_entry = tk.Entry(auto_search_window)
+        nasdaq_code_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(auto_search_window, text="SEO Words (comma separated):").pack(fill=tk.X, padx=5, pady=5)
+        seo_words_entry = tk.Entry(auto_search_window)
+        seo_words_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(auto_search_window, text="Interval (seconds):").pack(fill=tk.X, padx=5, pady=5)
+        interval_entry = tk.Entry(auto_search_window)
+        interval_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        tk.Label(auto_search_window, text="Duration (minutes):").pack(fill=tk.X, padx=5, pady=5)
+        duration_entry = tk.Entry(auto_search_window)
+        duration_entry.pack(fill=tk.X, padx=5, pady=5)
+
+        def start_search():
+            company = company_name_entry.get()
+            nasdaq_code = nasdaq_code_entry.get()
+            seo_words = seo_words_entry.get().split(',')
+            interval = int(interval_entry.get())
+            duration = int(duration_entry.get())
+
+            self.scraper = FinanceScraper(company, nasdaq_code, seo_words, self.display_article)
+            self.scraper_thread = threading.Thread(target=self.scraper.start_scraping, args=(interval, duration))
+            self.scraper_thread.start()
+            auto_search_window.destroy()
+
+        tk.Button(auto_search_window, text="Start", command=start_search).pack(pady=10)
+
+    def display_article(self, title, link, summary, sentiment):
+        sentiment_str = f"Pos: {sentiment['pos']} | Neu: {sentiment['neu']} | Neg: {sentiment['neg']} | Compound: {sentiment['compound']}"
+        self.text.config(state=tk.NORMAL)
+        self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\n\n")
+        self.text.config(state=tk.DISABLED)
+        self.history.append({"Title": title, "URL": link, "Summary": summary, "Sentiment": sentiment_str})
+
+    def stop_auto_search(self):
+        if self.scraper:
+            self.scraper.stop_scraping()
+            self.scraper_thread.join()
+            self.scraper = None
+            messagebox.showinfo("Stopped", "Automatic search stopped.")
+
 
 root = tk.Tk()
 app = StockScraperApp(root)
