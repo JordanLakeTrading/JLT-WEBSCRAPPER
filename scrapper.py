@@ -30,8 +30,25 @@ USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Safari/605.1.15',
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
-    # Add more user agents as needed
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 13_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0',
+    'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 9; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.90 Mobile Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36',
+    'Mozilla/5.0 (Linux; Android 8.0.0; SM-G950U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.137 Mobile Safari/537.36',
+    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36',
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+    'Mozilla/5.0 (Linux; Android 10; SM-A505F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
 ]
+
 
 PROXIES = [
     'http://123.456.789.000:8080',
@@ -302,40 +319,35 @@ class StockScraperApp:
             self.display_words()
 
         sid = SentimentIntensityAnalyzer()
-        positive_words = []
-        negative_words = []
-
+        sentiment_scores = []
+        
         for word in self.word_list:
             sentiment = sid.polarity_scores(word)
-            if sentiment['compound'] >= 0.05:
-                positive_words.append(word)
-            elif sentiment['compound'] <= -0.05:
-                negative_words.append(word)
+            compound_score = sentiment['compound']
+            
+            if compound_score <= -0.6:
+                sentiment_scores.append(1)  # Extremely negative
+            elif -0.6 < compound_score <= -0.2:
+                sentiment_scores.append(2)  # Slightly negative
+            elif -0.2 < compound_score < 0.2:
+                sentiment_scores.append(3)  # Neutral
+            elif 0.2 <= compound_score < 0.6:
+                sentiment_scores.append(4)  # Slightly positive
+            else:
+                sentiment_scores.append(5)  # Extremely positive
 
-        positive_df = pd.DataFrame(positive_words, columns=['Word'])
-        negative_df = pd.DataFrame(negative_words, columns=['Word'])
-
-        positive_df['Frequency'] = positive_df['Word'].map(positive_df['Word'].value_counts())
-        negative_df['Frequency'] = negative_df['Word'].map(negative_df['Word'].value_counts())
-
-        positive_output = "Positive Words:\n" + positive_df.to_string(index=False)
-        negative_output = "\nNegative Words:\n" + negative_df.to_string(index=False)
+        sentiment_df = pd.DataFrame({'Word': self.word_list, 'Sentiment': sentiment_scores})
+        sentiment_counts = sentiment_df['Sentiment'].value_counts()
 
         # Determine overall sentiment
-        if len(positive_words) > len(negative_words):
-            overall_sentiment = "Good"
-        elif len(positive_words) < len(negative_words):
-            overall_sentiment = "Bad"
-        else:
-            overall_sentiment = "Moderate"
+        overall_sentiment = sentiment_counts.idxmax()
 
         # Store results in history
         self.history.append({
             'Title': self.url_entry.get(),
             'URL': self.url_entry.get(),
             'Summary': self.text_content[:200],  # Summary is the first 200 characters
-            'Positive Words': ', '.join(positive_words),
-            'Negative Words': ', '.join(negative_words),
+            'Sentiment Scores': sentiment_scores,
             'Overall Sentiment': overall_sentiment
         })
 
@@ -345,10 +357,12 @@ class StockScraperApp:
 
         # Create text widget to display results
         results_text = tk.Text(sentiment_window)
-        results_text.insert(tk.END, positive_output + "\n" + negative_output)
+        results_text.insert(tk.END, f"Sentiment Scores Distribution:\n{sentiment_counts.to_string()}\n\n")
+        results_text.insert(tk.END, f"Overall Sentiment: {overall_sentiment}\n")
         results_text.pack()
 
         sentiment_window.mainloop()
+
 
     def display_words(self):
         try:
