@@ -526,17 +526,32 @@ class StockScraperApp:
 
     def display_article(self, title, link, summary, sentiment):
         sentiment_str = f"Pos: {sentiment['pos']} | Neu: {sentiment['neu']} | Neg: {sentiment['neg']} | Compound: {sentiment['compound']}"
+        overall_sentiment = ""
+        if sentiment['compound'] >= 0.5:
+            overall_sentiment = "Very Good"
+        elif sentiment['compound'] >= 0.05:
+            overall_sentiment = "Good"
+        elif sentiment['compound'] <= -0.5:
+            overall_sentiment = "Very Bad"
+        elif sentiment['compound'] <= -0.05:
+            overall_sentiment = "Bad"
+        else:
+            overall_sentiment = "Moderate"
+
         self.text.config(state=tk.NORMAL)
-        self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\n\n")
+        self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\nOverall Sentiment: {overall_sentiment}\n\n")
         self.text.config(state=tk.DISABLED)
+
+        positive_words = [word for word, score in sentiment.items() if score > 0.05]
+        negative_words = [word for word, score in sentiment.items() if score < -0.05]
+
         self.history.append({
             "Title": title,
             "URL": link,
             "Summary": summary,
-            "Positive Words": ', '.join([word for word, score in sentiment.items() if score > 0.05]),
-            "Negative Words": ', '.join([word for word, score in sentiment.items() if score < -0.05]),
-            "Overall Sentiment": "Good" if sentiment['compound'] >= 0.05 else "Bad" if sentiment[
-                                                                                           'compound'] <= -0.05 else "Moderate"
+            "Positive Words": ', '.join(positive_words),
+            "Negative Words": ', '.join(negative_words),
+            "Overall Sentiment": overall_sentiment
         })
 
     def stop_auto_search(self):
