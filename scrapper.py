@@ -12,49 +12,8 @@ from googlesearch import search
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from requests.adapters import HTTPAdapter
-from urllib3 import Retry
-import random
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 nltk.download('vader_lexicon')
-
-BLACKLIST = set()
-GREENLIST = set(["reliablewebsite1.com", "trustedsite.org"])
-
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1.2 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:67.0) Gecko/20100101 Firefox/67.0',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/51.0.2704.103 Safari/537.36',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 13_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.0 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Windows NT 10.0; WOW64; rv:45.0) Gecko/20100101 Firefox/45.0',
-    'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/12.1 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Linux; Android 9; SM-G960F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/73.0.3683.90 Mobile Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/75.0.3770.142 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/78.0.3904.97 Safari/537.36',
-    'Mozilla/5.0 (Linux; Android 8.0.0; SM-G950U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.137 Mobile Safari/537.36',
-    'Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:84.0) Gecko/20100101 Firefox/84.0',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36',
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 14_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-    'Mozilla/5.0 (Linux; Android 10; SM-A505F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 Mobile Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 11_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.96 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.140 Safari/537.36',
-    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.121 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/13.1.2 Safari/605.1.15',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-]
-
-
-PROXIES = [
-    'http://123.456.789.000:8080',
-    'http://987.654.321.000:8080',
-    # Add more proxies as needed
-]
 
 class FinanceScraper:
     def __init__(self, company, nasdaq_code, seo_words, display_callback):
@@ -64,66 +23,36 @@ class FinanceScraper:
         self.display_callback = display_callback
         self.sentiment_analyzer = SentimentIntensityAnalyzer()
         self.history = []
-        self.session = self.create_session()
-
-    def create_session(self):
-        session = requests.Session()
-        retries = Retry(total=5, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
-        session.mount('http://', HTTPAdapter(max_retries=retries))
-        session.mount('https://', HTTPAdapter(max_retries=retries))
-        return session
 
     def analyze_sentiment(self, text):
         return self.sentiment_analyzer.polarity_scores(text)
 
-    def is_relevant_site(self, url):
-        domain = re.findall(r'https?://(www\.)?([^/]+)', url)[0][1]
-        if domain in BLACKLIST:
-            print(f"Skipped blacklisted URL: {url}")
-            return False
-        if domain in GREENLIST:
-            print(f"Accepted greenlisted URL: {url}")
-            return True
-        return True
-
     def fetch_article_summary(self, url):
-        headers = {
-            'User-Agent': random.choice(USER_AGENTS),
-            'Referer': 'https://www.google.com/'
-        }
-        try:
-            proxy = random.choice(PROXIES)
-            response = self.session.get(url, headers=headers, proxies={"http": proxy, "https": proxy}, timeout=10)
-            if response.status_code != 200:
-                print(f"Non-200 status code for URL: {url}")
-                return None
-
-            soup = BeautifulSoup(response.text, 'html.parser')
-
-            if soup.find(text=re.compile(r'bot detection|captcha', re.I)) or soup.find('form', {'id': 'login'}):
-                print(f"Bot detection or sign-in required for URL: {url}")
-                BLACKLIST.add(url)
-                return None
-
-            time.sleep(random.uniform(1, 3))  # Mimic human reading time
-            paragraphs = soup.find_all('p')
-            summary = ' '.join([para.get_text() for para in paragraphs])
-            return summary
-        except requests.RequestException as e:
-            print(f"Request exception for URL {url}: {e}")
-            return None
+        response = requests.get(url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        paragraphs = soup.find_all('p')
+        summary = ' '.join([para.get_text() for para in paragraphs])
+        return summary
 
     def scrape_google_search(self):
         query = f"{self.company} {self.nasdaq_code} {' '.join(self.seo_words)} finance news"
         for url in search(query, num_results=10):
-            if not self.is_relevant_site(url):
-                continue
-            summary = self.fetch_article_summary(url)
-            if summary:
+            try:
+                summary = self.fetch_article_summary(url)
                 sentiment = self.analyze_sentiment(summary)
+
                 self.display_callback(self.company, url, summary, sentiment)
-                print(f"Processed URL: {url}")
-            time.sleep(random.uniform(5, 10))  # Randomize wait time to mimic human behavior
+                self.history.append({
+                    "Title": self.company,
+                    "URL": url,
+                    "Summary": summary,
+                    "Positive Words": [word for word, score in sentiment.items() if score > 0.05],
+                    "Negative Words": [word for word, score in sentiment.items() if score < -0.05],
+                    "Overall Sentiment": "Good" if sentiment['compound'] >= 0.05 else "Bad" if sentiment['compound'] <= -0.05 else "Moderate"
+                })
+                time.sleep(5)  # Display each result for 5 seconds
+            except Exception as e:
+                print(f"Error processing {url}: {e}")
 
     def start_scraping(self, interval, duration):
         end_time = time.time() + duration * 60
@@ -135,26 +64,6 @@ class FinanceScraper:
         history_df = pd.DataFrame(self.history)
         history_df.to_csv(file_path, index=False)
         print(f"History exported to {file_path}")
-
-    def fetch_with_selenium(self, url):
-        options = Options()
-        options.add_argument("--headless")
-        options.add_argument(f"user-agent={random.choice(USER_AGENTS)}")
-        driver = webdriver.Chrome(options=options)
-
-        try:
-            driver.get(url)
-            WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.TAG_NAME, 'body')))
-            soup = BeautifulSoup(driver.page_source, 'html.parser')
-            paragraphs = soup.find_all('p')
-            summary = ' '.join([para.get_text() for para in paragraphs])
-            driver.quit()
-            return summary
-        except Exception as e:
-            print(f"Error fetching with Selenium for URL {url}: {e}")
-            driver.quit()
-            return None
-
 
 class StockScraperApp:
     def __init__(self, root):
@@ -215,12 +124,11 @@ class StockScraperApp:
 
     def fetch_and_display_url(self, url):
         try:
-            summary = self.scraper.fetch_with_selenium(url)
-            if summary:
-                self.text_content = summary
-                self.current_position = 0
-                self.update_text_display()
-                self.perform_sentiment_analysis()
+            response = requests.get(url)
+            self.text_content = response.text
+            self.current_position = 0
+            self.update_text_display()
+            self.perform_sentiment_analysis()
         except requests.exceptions.RequestException as e:
             messagebox.showerror("Error", f"Failed to load URL: {e}")
 
@@ -319,35 +227,40 @@ class StockScraperApp:
             self.display_words()
 
         sid = SentimentIntensityAnalyzer()
-        sentiment_scores = []
-        
+        positive_words = []
+        negative_words = []
+
         for word in self.word_list:
             sentiment = sid.polarity_scores(word)
-            compound_score = sentiment['compound']
-            
-            if compound_score <= -0.6:
-                sentiment_scores.append(1)  # Extremely negative
-            elif -0.6 < compound_score <= -0.2:
-                sentiment_scores.append(2)  # Slightly negative
-            elif -0.2 < compound_score < 0.2:
-                sentiment_scores.append(3)  # Neutral
-            elif 0.2 <= compound_score < 0.6:
-                sentiment_scores.append(4)  # Slightly positive
-            else:
-                sentiment_scores.append(5)  # Extremely positive
+            if sentiment['compound'] >= 0.05:
+                positive_words.append(word)
+            elif sentiment['compound'] <= -0.05:
+                negative_words.append(word)
 
-        sentiment_df = pd.DataFrame({'Word': self.word_list, 'Sentiment': sentiment_scores})
-        sentiment_counts = sentiment_df['Sentiment'].value_counts()
+        positive_df = pd.DataFrame(positive_words, columns=['Word'])
+        negative_df = pd.DataFrame(negative_words, columns=['Word'])
+
+        positive_df['Frequency'] = positive_df['Word'].map(positive_df['Word'].value_counts())
+        negative_df['Frequency'] = negative_df['Word'].map(negative_df['Word'].value_counts())
+
+        positive_output = "Positive Words:\n" + positive_df.to_string(index=False)
+        negative_output = "\nNegative Words:\n" + negative_df.to_string(index=False)
 
         # Determine overall sentiment
-        overall_sentiment = sentiment_counts.idxmax()
+        if len(positive_words) > len(negative_words):
+            overall_sentiment = "Good"
+        elif len(positive_words) < len(negative_words):
+            overall_sentiment = "Bad"
+        else:
+            overall_sentiment = "Moderate"
 
         # Store results in history
         self.history.append({
             'Title': self.url_entry.get(),
             'URL': self.url_entry.get(),
             'Summary': self.text_content[:200],  # Summary is the first 200 characters
-            'Sentiment Scores': sentiment_scores,
+            'Positive Words': ', '.join(positive_words),
+            'Negative Words': ', '.join(negative_words),
             'Overall Sentiment': overall_sentiment
         })
 
@@ -357,12 +270,10 @@ class StockScraperApp:
 
         # Create text widget to display results
         results_text = tk.Text(sentiment_window)
-        results_text.insert(tk.END, f"Sentiment Scores Distribution:\n{sentiment_counts.to_string()}\n\n")
-        results_text.insert(tk.END, f"Overall Sentiment: {overall_sentiment}\n")
+        results_text.insert(tk.END, positive_output + "\n" + negative_output)
         results_text.pack()
 
         sentiment_window.mainloop()
-
 
     def display_words(self):
         try:
@@ -471,8 +382,7 @@ class StockScraperApp:
         sentiment_window = tk.Toplevel()
         sentiment_window.title("Visualize Sentiment")
 
-        import_button = tk.Button(sentiment_window, text="Import CSV",
-                                  command=lambda: self.import_csv(sentiment_window))
+        import_button = tk.Button(sentiment_window, text="Import CSV", command=lambda: self.import_csv(sentiment_window))
         import_button.pack(pady=10)
 
     def import_csv(self, sentiment_window):
@@ -519,39 +429,22 @@ class StockScraperApp:
                     canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
 
                 else:
-                    messagebox.showerror("Error",
-                                         "CSV file does not contain required columns 'Positive Words', 'Negative Words', and 'Overall Sentiment'.")
+                    messagebox.showerror("Error", "CSV file does not contain required columns 'Positive Words', 'Negative Words', and 'Overall Sentiment'.")
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to import CSV: {e}")
 
     def display_article(self, title, link, summary, sentiment):
         sentiment_str = f"Pos: {sentiment['pos']} | Neu: {sentiment['neu']} | Neg: {sentiment['neg']} | Compound: {sentiment['compound']}"
-        overall_sentiment = ""
-        if sentiment['compound'] >= 0.5:
-            overall_sentiment = "Very Good"
-        elif sentiment['compound'] >= 0.05:
-            overall_sentiment = "Good"
-        elif sentiment['compound'] <= -0.5:
-            overall_sentiment = "Very Bad"
-        elif sentiment['compound'] <= -0.05:
-            overall_sentiment = "Bad"
-        else:
-            overall_sentiment = "Moderate"
-
         self.text.config(state=tk.NORMAL)
-        self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\nOverall Sentiment: {overall_sentiment}\n\n")
+        self.text.insert(tk.END, f"Title: {title}\nLink: {link}\nSummary: {summary}\nSentiment: {sentiment_str}\n\n")
         self.text.config(state=tk.DISABLED)
-
-        positive_words = [word for word, score in sentiment.items() if score > 0.05]
-        negative_words = [word for word, score in sentiment.items() if score < -0.05]
-
         self.history.append({
             "Title": title,
             "URL": link,
             "Summary": summary,
-            "Positive Words": ', '.join(positive_words),
-            "Negative Words": ', '.join(negative_words),
-            "Overall Sentiment": overall_sentiment
+            "Positive Words": ', '.join([word for word, score in sentiment.items() if score > 0.05]),
+            "Negative Words": ', '.join([word for word, score in sentiment.items() if score < -0.05]),
+            "Overall Sentiment": "Good" if sentiment['compound'] >= 0.05 else "Bad" if sentiment['compound'] <= -0.05 else "Moderate"
         })
 
     def stop_auto_search(self):
@@ -559,7 +452,6 @@ class StockScraperApp:
             self.scraper_thread.join()
             self.scraper = None
             messagebox.showinfo("Stopped", "Automatic search stopped.")
-
 
 root = tk.Tk()
 app = StockScraperApp(root)
